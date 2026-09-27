@@ -1,0 +1,588 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTH
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          String    @default("CONCIERGE") // SUPER_ADMIN | RESORT_MANAGER | REVENUE_MANAGER | OPERATIONS_MANAGER | HOUSEKEEPING | MAINTENANCE | CONCIERGE
+  avatar        String?
+  department    String?
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  staff         Staff?
+  @@map("users")
+}
+
+// ============================================
+// RESORT STRUCTURE
+// ============================================
+
+model Resort {
+  id          String    @id @default(cuid())
+  name        String
+  location    String
+  timezone    String    @default("Asia/Kolkata")
+  currency    String    @default("INR")
+  totalRooms  Int
+  totalVillas Int
+  starRating  Float
+  checkInTime String    @default("14:00")
+  checkOutTime String   @default("12:00")
+  createdAt   DateTime  @default(now())
+
+  buildings   Building[]
+  restaurants Restaurant[]
+  @@map("resorts")
+}
+
+model Building {
+  id          String  @id @default(cuid())
+  resortId    String
+  name        String
+  type        String  // MAIN_HOTEL | VILLA | SPA | RESTAURANT | POOL | GYM | PARKING | STAFF
+  floors      Int     @default(1)
+  positionX   Float   @default(0)
+  positionY   Float   @default(0)
+  positionZ   Float   @default(0)
+
+  resort      Resort  @relation(fields: [resortId], references: [id])
+  rooms       Room[]
+  @@map("buildings")
+}
+
+model Room {
+  id              String    @id @default(cuid())
+  buildingId      String
+  number          String    @unique
+  floor           Int
+  type            String    // STANDARD | DELUXE | PREMIUM | SUITE | VILLA | PRESIDENTIAL
+  status          String    @default("AVAILABLE") // AVAILABLE | OCCUPIED | CLEANING | MAINTENANCE | OUT_OF_ORDER
+  basePrice       Float
+  maxOccupancy    Int
+  bedType         String
+  sqft            Int
+  amenities       String    // JSON array stored as string
+  positionX       Float     @default(0)
+  positionY       Float     @default(0)
+  positionZ       Float     @default(0)
+  temperature     Float?    @default(23.0)
+  energyStatus    String    @default("NORMAL") // NORMAL | HIGH | LOW | OFF
+  maintenanceRisk Float     @default(0.0)
+  lastCleaned     DateTime?
+  createdAt       DateTime  @default(now())
+
+  building        Building   @relation(fields: [buildingId], references: [id])
+  bookings        Booking[]
+  workOrders      WorkOrder[]
+  energyReadings  EnergyReading[]
+  @@map("rooms")
+}
+
+// ============================================
+// GUESTS
+// ============================================
+
+model Guest {
+  id                String    @id @default(cuid())
+  firstName         String
+  lastName          String
+  email             String    @unique
+  phone             String
+  nationality       String
+  loyaltyTier       String    @default("SILVER") // BRONZE | SILVER | GOLD | PLATINUM | DIAMOND
+  loyaltyPoints     Int       @default(0)
+  totalStays        Int       @default(0)
+  totalSpend        Float     @default(0)
+  dateOfBirth       DateTime?
+  anniversary       DateTime?
+  profilePhoto      String?
+  dietaryRestrictions String?
+  isVIP             Boolean   @default(false)
+  frictionScore     Float     @default(0.0)
+  satisfactionScore Float     @default(85.0)
+  
+  // Journey DNA (0-100 scores stored as floats)
+  luxuryPreference  Float     @default(70.0)
+  adventureScore    Float     @default(50.0)
+  foodSpending      Float     @default(60.0)
+  spaPreference     Float     @default(55.0)
+  priceSensitivity  Float     @default(40.0)
+  familyActivities  Float     @default(50.0)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bookings          Booking[]
+  interactions      GuestInteraction[]
+  preferences       GuestPreference[]
+  reviews           Review[]
+  @@map("guests")
+}
+
+model Booking {
+  id              String    @id @default(cuid())
+  guestId         String
+  roomId          String
+  checkIn         DateTime
+  checkOut        DateTime
+  status          String    @default("CONFIRMED") // CONFIRMED | CHECKED_IN | CHECKED_OUT | CANCELLED | NO_SHOW
+  adults          Int       @default(2)
+  children        Int       @default(0)
+  ratePerNight    Float
+  totalAmount     Float
+  discount        Float     @default(0)
+  paymentStatus   String    @default("PENDING") // PENDING | PARTIAL | PAID
+  source          String    @default("DIRECT") // DIRECT | BOOKING_COM | EXPEDIA | AIRBNB | TRAVEL_AGENT
+  specialRequests String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  guest           Guest   @relation(fields: [guestId], references: [id])
+  room            Room    @relation(fields: [roomId], references: [id])
+  reservations    Reservation[]
+  @@map("bookings")
+}
+
+model GuestInteraction {
+  id          String    @id @default(cuid())
+  guestId     String
+  type        String    // REQUEST | COMPLAINT | COMPLIMENT | INQUIRY | SERVICE_RECOVERY
+  channel     String    // PHONE | APP | WHATSAPP | IN_PERSON | EMAIL
+  subject     String
+  description String
+  status      String    @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | ESCALATED
+  priority    String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  department  String
+  resolvedAt  DateTime?
+  responseTime Float?   // minutes
+  satisfaction Int?     // 1-5
+  createdAt   DateTime  @default(now())
+
+  guest       Guest   @relation(fields: [guestId], references: [id])
+  @@map("guest_interactions")
+}
+
+model GuestPreference {
+  id          String  @id @default(cuid())
+  guestId     String
+  category    String  // ROOM | DINING | ACTIVITIES | AMENITIES | COMMUNICATION
+  key         String
+  value       String
+  confidence  Float   @default(1.0)
+
+  guest       Guest   @relation(fields: [guestId], references: [id])
+  @@map("guest_preferences")
+}
+
+// ============================================
+// STAFF
+// ============================================
+
+model Staff {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  employeeId    String    @unique
+  department    String    // HOUSEKEEPING | FOOD_BEVERAGE | MAINTENANCE | CONCIERGE | SECURITY | MANAGEMENT | SPA | FRONT_DESK
+  position      String
+  skills        String    // JSON array
+  shift         String    @default("MORNING") // MORNING | AFTERNOON | NIGHT | FLEXIBLE
+  status        String    @default("ON_DUTY") // ON_DUTY | OFF_DUTY | ON_LEAVE | BREAK
+  currentZone   String?
+  workload      Float     @default(0.5) // 0-1
+  performance   Float     @default(0.8) // 0-1
+  joinDate      DateTime
+  salary        Float
+
+  user          User        @relation(fields: [userId], references: [id])
+  shifts        Shift[]
+  tasks         Task[]
+  @@map("staff")
+}
+
+model Shift {
+  id        String    @id @default(cuid())
+  staffId   String
+  date      DateTime
+  startTime String
+  endTime   String
+  type      String    // MORNING | AFTERNOON | NIGHT
+  status    String    @default("SCHEDULED") // SCHEDULED | ACTIVE | COMPLETED | ABSENT
+
+  staff     Staff   @relation(fields: [staffId], references: [id])
+  @@map("shifts")
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  staffId     String?
+  title       String
+  description String
+  type        String    // HOUSEKEEPING | MAINTENANCE | SERVICE | F_AND_B | CONCIERGE
+  priority    String    @default("MEDIUM")
+  status      String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | CANCELLED
+  location    String?
+  dueAt       DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  staff       Staff?  @relation(fields: [staffId], references: [id])
+  @@map("tasks")
+}
+
+// ============================================
+// MAINTENANCE
+// ============================================
+
+model MaintenanceAsset {
+  id                  String    @id @default(cuid())
+  assetId             String    @unique
+  name                String
+  category            String    // HVAC | ELEVATOR | GENERATOR | PUMP | REFRIGERATION | ELECTRICAL | PLUMBING | POOL
+  location            String
+  manufacturer        String?
+  model               String?
+  installDate         DateTime?
+  lastServiceDate     DateTime?
+  nextServiceDate     DateTime?
+  healthScore         Float     @default(100.0) // 0-100
+  failureProbability  Float     @default(0.0)   // 0-1
+  criticalityLevel    String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  status              String    @default("OPERATIONAL") // OPERATIONAL | DEGRADED | FAILED | UNDER_MAINTENANCE
+  notes               String?
+  createdAt           DateTime  @default(now())
+
+  workOrders          WorkOrder[]
+  @@map("maintenance_assets")
+}
+
+model WorkOrder {
+  id          String    @id @default(cuid())
+  assetId     String?
+  roomId      String?
+  title       String
+  description String
+  type        String    // PREVENTIVE | CORRECTIVE | EMERGENCY | INSPECTION
+  priority    String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  status      String    @default("OPEN") // OPEN | IN_PROGRESS | COMPLETED | DEFERRED
+  assignedTo  String?
+  estimatedHours Float?
+  actualHours Float?
+  cost        Float?
+  scheduledAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  asset       MaintenanceAsset? @relation(fields: [assetId], references: [id])
+  room        Room?             @relation(fields: [roomId], references: [id])
+  @@map("work_orders")
+}
+
+// ============================================
+// INVENTORY
+// ============================================
+
+model InventoryItem {
+  id              String    @id @default(cuid())
+  sku             String    @unique
+  name            String
+  category        String    // FOOD | BEVERAGE | HOUSEKEEPING | MAINTENANCE | AMENITIES | LINEN
+  unit            String
+  currentStock    Float
+  minStock        Float
+  maxStock        Float
+  reorderPoint    Float
+  unitCost        Float
+  supplierId      String?
+  location        String?
+  lastRestocked   DateTime?
+  predictedDemand Float?
+  wastePercentage Float     @default(0.05)
+  createdAt       DateTime  @default(now())
+
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  @@map("inventory_items")
+}
+
+model Supplier {
+  id          String  @id @default(cuid())
+  name        String
+  contact     String
+  email       String
+  phone       String
+  category    String
+  leadTimeDays Int    @default(2)
+  reliability Float  @default(0.95)
+
+  items       InventoryItem[]
+  @@map("suppliers")
+}
+
+// ============================================
+// INVENTORY STAFF REQUESTS
+// ============================================
+
+model InventoryRequest {
+  id            String    @id @default(cuid())
+  sku           String
+  itemName      String
+  category      String
+  currentStock  Float
+  requestedQty  Float
+  unit          String
+  estimatedCost Float
+  priority      String    @default("HIGH") // CRITICAL | HIGH | MEDIUM
+  reason        String
+  vendor        String?
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  approvedBy    String?
+  approvedAt    DateTime?
+  rejectionNote String?
+  raisedBy      String    @default("InventoryManagementAgent")
+  poNumber      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  @@map("inventory_requests")
+}
+
+// ============================================
+// F&B
+// ============================================
+
+model Restaurant {
+  id          String  @id @default(cuid())
+  resortId    String
+  name        String
+  type        String  // MAIN | POOL_BAR | FINE_DINING | CAFE | ROOM_SERVICE
+  capacity    Int
+  openTime    String
+  closeTime   String
+  isOpen      Boolean @default(true)
+
+  resort      Resort        @relation(fields: [resortId], references: [id])
+  reservations Reservation[]
+  @@map("restaurants")
+}
+
+model Reservation {
+  id            String    @id @default(cuid())
+  restaurantId  String
+  bookingId     String?
+  guestName     String
+  date          DateTime
+  time          String
+  partySize     Int
+  status        String    @default("CONFIRMED")
+  specialNeeds  String?
+
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id])
+  booking       Booking?   @relation(fields: [bookingId], references: [id])
+  @@map("reservations")
+}
+
+// ============================================
+// REVIEWS & SENTIMENT
+// ============================================
+
+model Review {
+  id          String    @id @default(cuid())
+  guestId     String?
+  platform    String    // GOOGLE | BOOKING_COM | TRIPADVISOR | INTERNAL | WHATSAPP
+  rating      Float
+  title       String?
+  content     String
+  sentiment   String    @default("NEUTRAL") // POSITIVE | NEUTRAL | NEGATIVE
+  sentimentScore Float  @default(0.0) // -1 to 1
+  department  String?
+  categories  String    // JSON: ["wifi", "cleanliness", "food"]
+  isVerified  Boolean   @default(false)
+  publishedAt DateTime  @default(now())
+
+  guest       Guest?  @relation(fields: [guestId], references: [id])
+  @@map("reviews")
+}
+
+// ============================================
+// REVENUE & PRICING
+// ============================================
+
+model PricingRecommendation {
+  id              String    @id @default(cuid())
+  roomType        String
+  currentPrice    Float
+  recommendedPrice Float
+  confidence      Float
+  reason          String
+  expectedOccupancy Float
+  expectedRevenue  Float
+  revenueImpact   Float
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED | APPLIED
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  @@map("pricing_recommendations")
+}
+
+model RevenueForecast {
+  id              String    @id @default(cuid())
+  date            DateTime
+  predictedRevenue Float
+  predictedOccupancy Float
+  predictedADR    Float
+  confidence      Float
+  notes           String?
+  actualRevenue   Float?
+  createdAt       DateTime  @default(now())
+  @@map("revenue_forecasts")
+}
+
+// ============================================
+// AI & AUTOMATION
+// ============================================
+
+model Alert {
+  id          String    @id @default(cuid())
+  type        String    // GUEST | MAINTENANCE | REVENUE | INVENTORY | STAFF | CRISIS | AI
+  severity    String    // INFO | WARNING | CRITICAL
+  title       String
+  message     String
+  entityType  String?   // Room, Guest, Asset, etc.
+  entityId    String?
+  isRead      Boolean   @default(false)
+  actionUrl   String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  @@map("alerts")
+}
+
+model AIRecommendation {
+  id              String    @id @default(cuid())
+  type            String    // PRICING | STAFFING | MAINTENANCE | GUEST | INVENTORY | ENERGY
+  title           String
+  description     String
+  reasoning       String
+  expectedImpact  String
+  impactValue     Float?
+  priority        Int       @default(3) // 1-5
+  entityType      String?
+  entityId        String?
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED | APPLIED
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  @@map("ai_recommendations")
+}
+
+model AutomationRule {
+  id            String    @id @default(cuid())
+  name          String
+  description   String
+  trigger       String    // JSON: { type, condition, value }
+  actions       String    // JSON array of actions
+  isActive      Boolean   @default(true)
+  lastTriggered DateTime?
+  triggerCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  @@map("automation_rules")
+}
+
+// ============================================
+// ENERGY & ENVIRONMENT
+// ============================================
+
+model EnergyReading {
+  id          String    @id @default(cuid())
+  roomId      String?
+  zone        String
+  consumption Float     // kWh
+  timestamp   DateTime  @default(now())
+  type        String    // HVAC | LIGHTING | APPLIANCES | TOTAL
+
+  room        Room?   @relation(fields: [roomId], references: [id])
+  @@map("energy_readings")
+}
+
+model WeatherReading {
+  id              String    @id @default(cuid())
+  temperature     Float
+  humidity        Float
+  condition       String    // SUNNY | CLOUDY | RAINY | STORMY | FOGGY
+  windSpeed       Float
+  rainProbability Float
+  forecast        String    // JSON: next 7 days
+  timestamp       DateTime  @default(now())
+  @@map("weather_readings")
+}
+
+model CrisisEvent {
+  id            String    @id @default(cuid())
+  type          String    // WEATHER | POWER | WATER | EQUIPMENT | STAFF | DEMAND | SECURITY
+  severity      String    // LOW | MEDIUM | HIGH | CRITICAL
+  title         String
+  description   String
+  affectedAreas String    // JSON array
+  affectedGuests Int      @default(0)
+  status        String    @default("ACTIVE") // ACTIVE | MONITORING | RESOLVED
+  actions       String    // JSON array of recommended actions
+  startedAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+  @@map("crisis_events")
+}
+
+// ============================================
+// AI AGENT RUNS (Real-time data + DB persistence)
+// ============================================
+
+model AgentRun {
+  id              String    @id @default(cuid())
+  agentName       String    // StaffSchedulingAgent | InventoryAgent | OrchestratorAgent
+  agentRole       String
+  prompt          String
+  summary         String
+  resultJson      String    // Full JSON output stored as string
+  confidence      Float     @default(0.0)
+  durationMs      Int       @default(0)
+  status          String    @default("COMPLETED") // RUNNING | COMPLETED | FAILED
+  triggeredBy     String    @default("SYSTEM")   // user email or SYSTEM
+  createdAt       DateTime  @default(now())
+  @@map("agent_runs")
+}
+
+model OccupancySnapshot {
+  id              String    @id @default(cuid())
+  totalRooms      Int
+  occupiedRooms   Int
+  occupancyPct    Float
+  avgBasePrice    Float
+  dynamicMultiplier Float
+  projectedRevenue  Float
+  projectedADR    Float
+  projectedRevPAR Float
+  simulatedBy     String    @default("SYSTEM")
+  appliedToPMS    Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  @@map("occupancy_snapshots")
+}
+
+// Shared persisted Digital Twin inventory and booking prices.
+model DigitalTwinRoom {
+  id String @id
+  payload String
+  @@map("digital_twin_rooms")
+}
